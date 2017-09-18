@@ -302,9 +302,7 @@
                         "IpProtocol": "tcp",
                         "FromPort": "22",
                         "ToPort": "22",
-                        "CidrIp": {
-                            "66.234.199.33/32"
-                        }
+                        "CidrIp": "66.234.199.33/32"
                     },
                     {
                         "IpProtocol": "tcp",
@@ -338,7 +336,7 @@
                         "FromPort": "22",
                         "ToPort": "22",
                         "SourceSecurityGroupId": {
-                            "Ref": "MongoInterServerAccessSecurityGroup"
+                            "Ref": "MongoDataOpsAccessSecurityGroup"
                         }
                     },
                     {
@@ -346,7 +344,7 @@
                         "FromPort": "27017",
                         "ToPort": "27030",
                         "SourceSecurityGroupId": {
-                            "Ref": "MongoInterServerAccessSecurityGroup"
+                            "Ref": "MongoDataOpsAccessSecurityGroup"
                         }
                     },
                     {
@@ -354,7 +352,7 @@
                         "FromPort": "28017",
                         "ToPort": "28017",
                         "SourceSecurityGroupId": {
-                            "Ref": "MongoInterServerAccessSecurityGroup"
+                            "Ref": "MongoDataOpsAccessSecurityGroup"
                         }
                     }
                 ]
@@ -615,7 +613,7 @@
             }
         },
         "SecondaryReplicaNodeWaitForNodeInstall": {
-            "Type": "AWS::CloudFormation::WaitCondition"
+            "Type": "AWS::CloudFormation::WaitCondition",
             "DependsOn": "SecondaryReplicaNode",
             "Properties": {
                 "Handle": {
@@ -704,7 +702,7 @@
             }
         },
         "ArbiterReplicaNodeWaitForNodeInstall": {
-            "Type": "AWS::CloudFormation::WaitCondition"
+            "Type": "AWS::CloudFormation::WaitCondition",
             "DependsOn": "ArbiterNode",
             "Properties": {
                 "Handle": {
