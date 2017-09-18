@@ -1,0 +1,593 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "This template is used for setting up a single mongodb node",
+    "Parameters": {
+        "VPC": {
+            "Type": "AWS::EC2::VPC::Id",
+            "Description": "VPC-ID of your existing Virtual Private Cloud (VPC) where you want to depoy MongoDB cluster.",
+            "AllowedPattern": "vpc-[0-9a-z]{8}"
+        },
+        "NodeSubnet": {
+            "Description": "Subnet Id",
+            "Type": "String"
+        },
+        "KeyName": {
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "Default": "home",
+            "Description": "Name of an existing EC2 KeyPair. MongoDB instances will launch with this KeyPair."
+        },
+        "MongoDBVersion": {
+            "Description": "MongoDB version",
+            "Type": "String",
+            "Default": "3.4",
+            "AllowedValues": [
+                "3.4",
+                "3.2"
+            ]
+        },
+        "MongoDBAdminUsername": {
+            "Default": "admin",
+            "NoEcho": "true",
+            "Description": "MongoDB admin account username",
+            "Type": "String",
+            "MinLength": "5",
+            "MaxLength": "16",
+            "AllowedPattern": "[a-zA-Z][a-zA-Z0-9]*",
+            "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+        },
+        "MongoDBAdminPassword": {
+            "AllowedPattern": "([A-Za-z0-9_@-]{8,32})",
+            "ConstraintDescription": "Input your MongoDB database password, Min 8, Maximum of 32 characters. . Allowed characters are: [A-Za-z0-9_@-]",
+            "Description": "Enter your MongoDB Database Password, Min 8, maximum of 32 characters.",
+            "NoEcho": "true",
+            "Type": "String"
+        },
+        "NodeInstanceType": {
+            "Description": "Amazon EC2 instance type for the MongoDB replica set or arbiter nodes.",
+            "Type": "String",
+            "Default": "m4.large",
+            "AllowedValues": [
+                "t2.nano",
+                "t2.micro",
+                "t2.small",
+                "t2.medium",
+                "t2.large",
+                "t2.xlarge",
+                "t2.2xlarge",
+                "m3.medium",
+                "m3.large",
+                "m3.xlarge",
+                "m3.2xlarge",
+                "m4.large",
+                "m4.xlarge",
+                "m4.2xlarge",
+                "m4.4xlarge",
+                "m4.10xlarge",
+                "c3.large",
+                "c3.xlarge",
+                "c3.2xlarge",
+                "c3.4xlarge",
+                "c3.8xlarge",
+                "r3.large",
+                "r3.xlarge",
+                "r3.2xlarge",
+                "r3.4xlarge",
+                "r3.8xlarge",
+                "i2.xlarge",
+                "i2.2xlarge",
+                "i2.4xlarge",
+                "i2.8xlarge"
+            ]
+        },
+        "DataVolumeIops": {
+            "Type": "String",
+            "Description": "Iops of EBS volume (data) when io1 type is chosen. Otherwise ignored",
+            "Default": "100"
+        },
+        "DataVolumeSize": {
+            "Type": "String",
+            "Description": "EBS Volume Size (data) to be attached to node in GBs",
+            "Default": "200"
+        },
+        "DataVolumeType": {
+            "Type": "String",
+            "Description": "EBS Volume Type (data) to be attached to node in GBs [io1,gp2]",
+            "Default": "io1",
+            "AllowedValues": [
+                "gp2",
+                "io1"
+            ]
+        },
+        "JournalVolumeIops": {
+            "Type": "String",
+            "Description": "Iops of EBS volume (journal) when io1 type is chosen. Otherwise ignored",
+            "Default": "250"
+        },
+        "JournalVolumeSize": {
+            "Type": "String",
+            "Description": "EBS Volume Size (journal) to be attached to node in GBs",
+            "Default": "10"
+        },
+        "JournalVolumeType": {
+            "Type": "String",
+            "Description": "EBS Volume Type (journal) to be attached to node in GBs [io1,gp2]",
+            "Default": "gp2",
+            "AllowedValues": [
+                "gp2",
+                "io1"
+            ]
+        },
+        "LogVolumeIops": {
+            "Type": "String",
+            "Description": "Iops of EBS volume (log) when io1 type is chosen. Otherwise ignored",
+            "Default": "250"
+        },
+        "LogVolumeSize": {
+            "Type": "String",
+            "Description": "EBS Volume Size (log) to be attached to node in GBs",
+            "Default": "10"
+        },
+        "LogVolumeType": {
+            "Type": "String",
+            "Description": "EBS Volume Type (log) to be attached to node in GBs [io1,gp2]",
+            "Default": "gp2",
+            "AllowedValues": [
+                "gp2",
+                "io1"
+            ]
+        },
+        "MongoDataOpsAccessSecurityGroupID": {
+            "Description": "ID of the MongoDB Server Access Security Group (e.g., sg-7f16e910)",
+            "Type": "AWS::EC2::SecurityGroup::Id"
+        },
+        "MongoInterServerAccessSecurityGroupID": {
+            "Description": "ID of the MongoDB Inter-Server Communication Security Group (e.g., sg-7f16e910)",
+            "Type": "AWS::EC2::SecurityGroup::Id"
+        },
+        "MongoDBNodeIAMProfileID": {
+            "Description": "ID of the MongoDB IAM Profile",
+            "Type": "String"
+        },
+        "ImageId": {
+            "Description": "AMI ID for Instance",
+            "Type": "String"
+        },
+        "NodeNameTag": {
+            "Description": "Instance Name",
+            "Type": "String"
+        },
+        "NodeIndex": {
+            "Description": "Instance Index",
+            "Type": "String"
+        },
+        "ClusterNodeCount": {
+            "Description": "Number of Cluster Node Members (including arbiter if any). Choose 1 or 3",
+            "Type": "String",
+            "Default": "1",
+            "AllowedValues": [
+                "1",
+                "3"
+            ]
+        },
+        "ReplicaShardIndex": {
+            "Description": "Shard Index",
+            "Type": "String"
+        },
+        "StackName": {
+            "Description": "Name of the parent stack",
+            "Type": "String"
+        },
+        "WaitForNodeInstallWaitHandle": {
+            "Description": "Pre-signed Wait Handle URL to send signal for associated wait condition",
+            "Type": "String"
+        },
+        "QSS3BucketName": {
+            "AllowedPattern": "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$",
+            "Default": "quickstart-reference",
+            "Type": "String",
+            "ConstraintDescription": "Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-).",
+            "Description": "S3 bucket name for the Quick Start assets. Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
+        },
+        "QSS3KeyPrefix": {
+            "AllowedPattern": "^[0-9a-zA-Z-/]*$",
+            "Default": "mongodb/latest/",
+            "Type": "String",
+            "ConstraintDescription": "Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/).",
+            "Description": "S3 key prefix for the Quick Start assets. Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/). It cannot start or end with a hyphen (-)."
+        }
+    },
+    "Conditions": {
+        "UseDataPIops": {
+            "Fn::Equals": [
+                {
+                    "Ref": "DataVolumeType"
+                },
+                "io1"
+            ]
+        },
+        "UseJournalPIops": {
+            "Fn::Equals": [
+                {
+                    "Ref": "JournalVolumeType"
+                },
+                "io1"
+            ]
+        },
+        "UseLogPIops": {
+            "Fn::Equals": [
+                {
+                    "Ref": "LogVolumeType"
+                },
+                "io1"
+            ]
+        }
+    },
+    "Resources": {
+        "NodeNetworkInterface": {
+            "Type": "AWS::EC2::NetworkInterface",
+            "Properties": {
+                "Description": "Network Interface for Mongo Node",
+                "SubnetId": {
+                    "Ref": "NodeSubnet"
+                },
+                "GroupSet": [
+                    {
+                        "Ref": "MongoDataOpsAccessSecurityGroupID"
+                    },
+                    {
+                        "Ref": "MongoInterServerAccessSecurityGroupID"
+                    }
+                ],
+                "SourceDestCheck": "true",
+                "Tags": [
+                    {
+                        "Key": "Network",
+                        "Value": "Public"
+                    }
+                ]
+            }
+        },
+        "NodeInstance": {
+            "Type": "AWS::EC2::Instance",
+            "Metadata": {
+                "HostRole": "MongoDB Node",
+                "AWS::CloudFormation::Init": {
+                    "config": {
+                        "files": {
+                            "/tmp/mongo_pass.txt": {
+                                "content": {
+                                    "Ref": "MongoDBAdminPassword"
+                                },
+                                "mode": "000440",
+                                "owner": "root",
+                                "group": "root"
+                            }
+                        }
+                    }
+                }
+            },
+            "Properties": {
+                "NetworkInterfaces": [
+                    {
+                        "NetworkInterfaceId": {
+                            "Ref": "NodeNetworkInterface"
+                        },
+                        "DeviceIndex": "0"
+                    }
+                ],
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "ImageId": {
+                    "Ref": "ImageId"
+                },
+                "IamInstanceProfile": {
+                    "Ref": "MongoDBNodeIAMProfileID"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": {
+                            "Ref": "NodeNameTag"
+                        }
+                    },
+                    {
+                        "Key": "ClusterNodeCount",
+                        "Value": {
+                            "Ref": "ClusterNodeCount"
+                        }
+                    },
+                    {
+                        "Key": "NodeIndex",
+                        "Value": {
+                            "Ref": "NodeIndex"
+                        }
+                    },
+                    {
+                        "Key": "ReplicaShardIndex",
+                        "Value": {
+                            "Ref": "ReplicaShardIndex"
+                        }
+                    }
+                ],
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": "/dev/xvdg",
+                        "Ebs": {
+                            "VolumeType": {
+                                "Ref": "JournalVolumeType"
+                            },
+                            "DeleteOnTermination": "true",
+                            "VolumeSize": {
+                                "Ref": "JournalVolumeSize"
+                            },
+                            "Iops": {
+                                "Fn::If": [
+                                    "UseJournalPIops",
+                                    {
+                                        "Ref": "JournalVolumeIops"
+                                    },
+                                    {
+                                        "Ref": "AWS::NoValue"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "DeviceName": "/dev/xvdh",
+                        "Ebs": {
+                            "VolumeType": {
+                                "Ref": "LogVolumeType"
+                            },
+                            "DeleteOnTermination": "true",
+                            "VolumeSize": {
+                                "Ref": "LogVolumeSize"
+                            },
+                            "Iops": {
+                                "Fn::If": [
+                                    "UseLogPIops",
+                                    {
+                                        "Ref": "LogVolumeIops"
+                                    },
+                                    {
+                                        "Ref": "AWS::NoValue"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "DeviceName": "/dev/xvdf",
+                        "Ebs": {
+                            "VolumeSize": {
+                                "Ref": "DataVolumeSize"
+                            },
+                            "VolumeType": {
+                                "Ref": "DataVolumeType"
+                            },
+                            "Iops": {
+                                "Fn::If": [
+                                    "UseDataPIops",
+                                    {
+                                        "Ref": "DataVolumeIops"
+                                    },
+                                    {
+                                        "Ref": "AWS::NoValue"
+                                    }
+                                ]
+                            },
+                            "DeleteOnTermination": "true"
+                        }
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash\n",
+                                "/opt/aws/bin/cfn-init -v --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                " --resource NodeInstance ",
+                                " --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n",
+                                "mkdir -p /home/ec2-user/mongodb \n",
+                                "cd /home/ec2-user/mongodb \n",
+                                "aws s3 cp s3://",
+                                {
+                                    "Ref": "QSS3BucketName"
+                                },
+                                "/",
+                                {
+                                    "Ref": "QSS3KeyPrefix"
+                                },
+                                "scripts/orchestrator.sh orchestrator.sh\n",
+                                "chmod +x orchestrator.sh \n",
+                                "aws s3 cp s3://",
+                                {
+                                    "Ref": "QSS3BucketName"
+                                },
+                                "/",
+                                {
+                                    "Ref": "QSS3KeyPrefix"
+                                },
+                                "scripts/disable-transparent-hugepages /etc/init.d/disable-transparent-hugepages\n",
+                                "chmod +x /etc/init.d/disable-transparent-hugepages \n",
+                                "chkconfig --add disable-transparent-hugepages \n",
+                                "aws s3 cp s3://",
+                                {
+                                    "Ref": "QSS3BucketName"
+                                },
+                                "/",
+                                {
+                                    "Ref": "QSS3KeyPrefix"
+                                },
+                                "scripts/init_node.sh init.sh\n",
+                                "aws s3 cp s3://",
+                                {
+                                    "Ref": "QSS3BucketName"
+                                },
+                                "/",
+                                {
+                                    "Ref": "QSS3KeyPrefix"
+                                },
+                                "scripts/signalFinalStatus.sh signalFinalStatus.sh\n",
+                                "chmod +x signalFinalStatus.sh \n",
+                                "chmod +x init.sh \n",
+                                "#  Run the install \n",
+                                "#  Store stack name to tag DDB name\n",
+                                "echo ",
+                                {
+                                    "Fn::Join": [
+                                        "_",
+                                        [
+                                            "export TABLE_NAMETAG=",
+                                            {
+                                                "Ref": "StackName"
+                                            }
+                                        ]
+                                    ]
+                                },
+                                " >> config.sh\n",
+                                "echo ",
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "export MongoDBVersion=",
+                                            {
+                                                "Ref": "MongoDBVersion"
+                                            }
+                                        ]
+                                    ]
+                                },
+                                " >> config.sh\n",
+                                "echo ",
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "export VPC=",
+                                            {
+                                                "Ref": "VPC"
+                                            }
+                                        ]
+                                    ]
+                                },
+                                " >> config.sh\n",
+                                "#  Store WaitHandler\n",
+                                "echo ",
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "\"",
+                                            "export WAITHANDLER='",
+                                            {
+                                                "Ref": "WaitForNodeInstallWaitHandle"
+                                            },
+                                            "'",
+                                            "\""
+                                        ]
+                                    ]
+                                },
+                                " >> config.sh\n",
+                                "echo ",
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "export MONGODB_ADMIN_USER=",
+                                            {
+                                                "Ref": "MongoDBAdminUsername"
+                                            }
+                                        ]
+                                    ]
+                                },
+                                " >> config.sh\n",
+                                "mkdir -p /mongo_auth \n",
+                                "./init.sh > install.log 2>&1 \n",
+                                "#  Cleanup \n",
+                                "#rm -rf *\n",
+                                "chown -R ec2-user:ec2-user /home/ec2-user/ \n",
+                                "/home/ec2-user/mongodb/signalFinalStatus.sh 0\n"
+                            ]
+                        ]
+                    }
+                },
+                "InstanceType": {
+                    "Ref": "NodeInstanceType"
+                }
+            }
+        },
+        "NodeElasticIP": {
+            "Type": "AWS:EC2:EIP",
+            "Properties": {
+                "InstanceId": {
+                    "Ref": "NodeInstance"
+                },
+                "Domain": "vpc"
+            }
+        },
+        "NodeInstanceRecoveryAlarm": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "AlarmDescription": "EC2 Autorecovery for Node Instance. Autorecover if we fail EC2 status checks for 5 minutes.",
+                "Namespace": "AWS/EC2",
+                "MetricName": "StatusCheckFailed_System",
+                "Statistic": "Minimum",
+                "Period": "60",
+                "EvaluationPeriods": "5",
+                "ComparisonOperator": "GreaterThanThreshold",
+                "Threshold": "0",
+                "AlarmActions": [
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:aws:automate:",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                ":ec2:recover"
+                            ]
+                        ]
+                    }
+                ],
+                "Dimensions": [
+                    {
+                        "Name": "InstanceId",
+                        "Value": {
+                            "Ref": "NodeInstance"
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs": {
+        "NodePublicIp": {
+            "Value": {
+                "Fn::GetAtt": [
+                    "NodeInstance",
+                    "PublicIp"
+                ]
+            },
+            "Description": "Public IP Address of Node Instance"
+        },
+        "NodeInstanceID" : {
+            "Description": "The Instance ID",
+            "Value" : { "Ref": "NodeInstance" }
+        },
+        "NodeNameTag": {
+            "Description": "Node Name Tag",
+            "Value" : { "Ref": "NodeNameTag"}
+        }
+    }init_node
+}

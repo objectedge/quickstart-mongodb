@@ -1,0 +1,746 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "(000F) Deploy MongoDB Replica Set on AWS (Existing VPC)",
+    "Metadata": {
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "Network Configuration"
+                    },
+                    "Parameters": [
+                        "VPC",
+                        "PrimaryNodeSubnet",
+                        "SecondaryNodeSubnet",
+                        "ArbiterNodeSubnet"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Security Configuration"
+                    },
+                    "Parameters": [
+                        "KeyPairName"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "MongoDB Database Configuration"
+                    },
+                    "Parameters": [
+                        "MongoDBVersion",
+                        "MongoDBAdminUsername",
+                        "MongoDBAdminPassword",
+                        "ReplicaInstanceType",
+                        "ArbiterInstanceType",
+                        "Iops",
+                        "VolumeSize",
+                        "VolumeType"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "AWS Quick Start Configuration"
+                    },
+                    "Parameters": [
+                        "QSS3BucketName",
+                        "QSS3KeyPrefix"
+                    ]
+                }
+            ],
+            "ParameterLabels": {
+                "VPC": {
+                    "default": "VPC"
+                },
+                "PrimaryNodeSubnet": {
+                    "default": "Primary Node Subnet"
+                },
+                "SecondaryNodeSubnet": {
+                    "default": "Secondary Node Subnet"
+                },
+                "ArbiterNodeSubnet": {
+                    "default": "Secondary Node Subnet"
+                },
+                "KeyPairName": {
+                    "default": "Key Pair Name"
+                },
+                "MongoDBVersion": {
+                    "default": "MongoDB Version"
+                },
+                "MongoDBAdminPassword": {
+                    "default": "MongoDB Admin Password"
+                },
+                "MongoDBAdminUsername": {
+                    "default": "MongoDB Admin Username"
+                },
+                "ReplicaInstanceType": {
+                    "default": "Replica Set Node Instance Type"
+                },
+                "ArbiterInstanceType": {
+                    "default": "Arbiter Node Instance Type"
+                },
+                "Iops": {
+                    "default": "Data Volume Iops"
+                },
+                "VolumeSize": {
+                    "default": "Data Volume Size"
+                },
+                "VolumeType": {
+                    "default": "Data Volume Type"
+                },
+                "QSS3BucketName": {
+                    "default": "Quick Start S3 Bucket Name"
+                },
+                "QSS3KeyPrefix": {
+                    "default": "Quick Start S3 Key Prefix"
+                }
+            }
+        }
+    },
+    "Parameters": {
+        "VPC": {
+            "Type": "AWS::EC2::VPC::Id",
+            "Description": "VPC-ID of your existing Virtual Private Cloud (VPC) where you want to depoy MongoDB cluster.",
+            "AllowedPattern": "vpc-[0-9a-z]{8}"
+        },
+        "PrimaryNodeSubnet": {
+            "Type": "AWS::EC2::Subnet::Id",
+            "Description": "Subnet-ID the existing subnet in your VPC where you want to deploy Primary node.",
+            "AllowedPattern": "subnet-[0-9a-z]{8}"
+        },
+        "SecondaryNodeSubnet": {
+            "Type": "AWS::EC2::Subnet::Id",
+            "Description": "Subnet-ID the existing subnet in your VPC where you want to deploy Secondary node.",
+            "AllowedPattern": "subnet-[0-9a-z]{8}"
+        },
+        "ArbiterNodeSubnet": {
+            "Type": "AWS::EC2::Subnet::Id",
+            "Description": "Subnet-ID the existing subnet in your VPC where you want to deploy Arbiter node.",
+            "AllowedPattern": "subnet-[0-9a-z]{8}"
+        },
+        "KeyPairName": {
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "Default": "home",
+            "Description": "Name of an existing EC2 KeyPair. MongoDB instances will launch with this KeyPair."
+        },
+        "MongoDBVersion": {
+            "Description": "MongoDB version",
+            "Type": "String",
+            "Default": "3.4",
+            "AllowedValues": [
+                "3.4",
+                "3.2"
+            ]
+        },
+        "MongoDBAdminUsername": {
+            "Default": "admin",
+            "NoEcho": "true",
+            "Description": "MongoDB admin account username",
+            "Type": "String",
+            "MinLength": "5",
+            "MaxLength": "16",
+            "AllowedPattern": "[a-zA-Z][a-zA-Z0-9]*",
+            "ConstraintDescription": "must begin with a letter and contain only alphanumeric characters."
+        },
+        "MongoDBAdminPassword": {
+            "AllowedPattern": "([A-Za-z0-9_@-]{8,32})",
+            "ConstraintDescription": "Input your MongoDB database password, Min 8, Maximum of 32 characters. . Allowed characters are: [A-Za-z0-9_@-]",
+            "Description": "Enter your MongoDB Database Password, Min 8, maximum of 32 characters.",
+            "NoEcho": "true",
+            "Type": "String"
+        },
+        "ReplicaInstanceType": {
+            "Description": "Amazon EC2 instance type for the MongoDB replica set nodes.",
+            "Type": "String",
+            "Default": "m4.large",
+            "AllowedValues": [
+                "m3.medium",
+                "m3.large",
+                "m3.xlarge",
+                "m3.2xlarge",
+                "m4.large",
+                "m4.xlarge",
+                "m4.2xlarge",
+                "m4.4xlarge",
+                "m4.10xlarge",
+                "c3.large",
+                "c3.xlarge",
+                "c3.2xlarge",
+                "c3.4xlarge",
+                "c3.8xlarge",
+                "r3.large",
+                "r3.xlarge",
+                "r3.2xlarge",
+                "r3.4xlarge",
+                "r3.8xlarge",
+                "i2.xlarge",
+                "i2.2xlarge",
+                "i2.4xlarge",
+                "i2.8xlarge"
+            ]
+        },
+        "ArbiterInstanceType": {
+            "Description": "Amazon EC2 instance type for the MongoDB arbiter nodes.",
+            "Type": "String",
+            "Default": "t2.micro",
+            "AllowedValues": [
+                "t2.nano",
+                "t2.micro",
+                "t2.small",
+                "t2.medium",
+                "t2.large",
+                "t2.xlarge",
+                "t2.2xlarge"
+            ]
+        },
+        "Iops": {
+            "Type": "Number",
+            "Description": "Iops of EBS volume (data) when io1 type is chosen. Otherwise ignored",
+            "Default": "500",
+            "MinValue": "100",
+            "MaxValue": "20000"
+        },
+        "VolumeSize": {
+            "Type": "Number",
+            "Description": "EBS Volume Size (data) to be attached to node in GBs",
+            "Default": "200",
+            "MinValue": "100",
+            "MaxValue": "16000"
+        },
+        "VolumeType": {
+            "Type": "String",
+            "Description": "EBS Volume Type (data) to be attached to node in GBs [io1,gp2]",
+            "Default": "io1",
+            "AllowedValues": [
+                "gp2",
+                "io1"
+            ]
+        },
+        "QSS3BucketName": {
+            "AllowedPattern": "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$",
+            "Default": "quickstart-reference",
+            "Type": "String",
+            "ConstraintDescription": "Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-).",
+            "Description": "S3 bucket name for the Quick Start assets. Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
+        },
+        "QSS3KeyPrefix": {
+            "AllowedPattern": "^[0-9a-zA-Z-/]*/$",
+            "Default": "mongodb/latest/",
+            "Type": "String",
+            "ConstraintDescription": "Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/).",
+            "Description": "S3 key prefix for the Quick Start assets. Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/). It cannot start or end with a hyphen (-)."
+        }
+    },
+    "Mappings": {
+        "AWSAMIRegionMap": {
+            "AMI": {
+                "AMZNLINUX": "amzn-ami-hvm-2017.03.1.20170812-x86_64-gp2"
+            },
+            "ap-northeast-1": {
+                "AMZNLINUX": "ami-4af5022c"
+            },
+            "ap-northeast-2": {
+                "AMZNLINUX": "ami-8663bae8"
+            },
+            "ap-south-1": {
+                "AMZNLINUX": "ami-d7abd1b8"
+            },
+            "ap-southeast-1": {
+                "AMZNLINUX": "ami-fdb8229e"
+            },
+            "ap-southeast-2": {
+                "AMZNLINUX": "ami-30041c53"
+            },
+            "ca-central-1": {
+                "AMZNLINUX": "ami-5ac17f3e"
+            },
+            "eu-central-1": {
+                "AMZNLINUX": "ami-657bd20a"
+            },
+            "eu-west-1": {
+                "AMZNLINUX": "ami-ebd02392"
+            },
+            "eu-west-2": {
+                "AMZNLINUX": "ami-489f8e2c"
+            },
+            "sa-east-1": {
+                "AMZNLINUX": "ami-d27203be"
+            },
+            "us-east-1": {
+                "AMZNLINUX": "ami-4fffc834"
+            },
+            "us-east-2": {
+                "AMZNLINUX": "ami-ea87a78f"
+            },
+            "us-west-1": {
+                "AMZNLINUX": "ami-3a674d5a"
+            },
+            "us-west-2": {
+                "AMZNLINUX": "ami-aa5ebdd2"
+            }
+        }
+    },
+    "Resources": {
+        "MongoDataAccessIdentifierSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "VPC"
+                },
+                "GroupDescription": "Attach to instances to grant them access to MongoDB servers"
+            }
+        },
+        "MongoDataOpsAccessSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "VPC"
+                },
+                "GroupDescription": "Control MongoDB servers ingress traffic for data access and operations (SSH)",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": {
+                            "66.234.199.33/32"
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "27017",
+                        "ToPort": "27030",
+                        "SourceSecurityGroupId": {
+                            "Ref": "MongoDataAccessIdentifierSecurityGroup"
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "28017",
+                        "ToPort": "28017",
+                        "SourceSecurityGroupId": {
+                            "Ref": "MongoDataAccessIdentifierSecurityGroup"
+                        }
+                    }
+                ]
+            }
+        },
+        "MongoInterServerAccessSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "VPC"
+                },
+                "GroupDescription": "MongoDB inter-server communication and management ports",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "SourceSecurityGroupId": {
+                            "Ref": "MongoInterServerAccessSecurityGroup"
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "27017",
+                        "ToPort": "27030",
+                        "SourceSecurityGroupId": {
+                            "Ref": "MongoInterServerAccessSecurityGroup"
+                        }
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "28017",
+                        "ToPort": "28017",
+                        "SourceSecurityGroupId": {
+                            "Ref": "MongoInterServerAccessSecurityGroup"
+                        }
+                    }
+                ]
+            }
+        },
+        "MongoDBNodeIAMRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ec2.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "Backup",
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:*",
+                                        "ec2:Describe*",
+                                        "ec2:AttachNetworkInterface",
+                                        "ec2:AllocateAddress",
+                                        "ec2:AssociateAddress",
+                                        "ec2:AttachVolume",
+                                        "ec2:CreateTags",
+                                        "ec2:CreateVolume",
+                                        "ec2:RunInstances",
+                                        "ec2:StartInstances",
+                                        "ec2:DeleteVolume",
+                                        "ec2:CreateSecurityGroup",
+                                        "ec2:CreateSnapshot"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "dynamodb:*",
+                                        "dynamodb:Scan",
+                                        "dynamodb:Query",
+                                        "dynamodb:GetItem",
+                                        "dynamodb:BatchGetItem",
+                                        "dynamodb:UpdateTable"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "MongoDBNodeIAMProfile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "Path": "/",
+                "Roles": [
+                    {
+                        "Ref": "MongoDBNodeIAMRole"
+                    }
+                ]
+            }
+        },
+        "PrimaryReplicaNodeWaitForNodeInstallWaitHandle": {
+            "Type": "AWS::CloudFormation::WaitConditionHandle",
+            "Properties": {}
+        },
+        "PrimaryReplicaNode": {
+            "DependsOn": "PrimaryReplicaNodeWaitForNodeInstallWaitHandle",
+            "Type": "AWS::CloudFormation::Stack",
+            "Properties": {
+                "TemplateURL": {
+                    "Fn::Sub": "https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}templates/oe-mongodb-node.template"
+                },
+                "Parameters": {
+                    "VPC": {
+                        "Ref": "VPC"
+                    },
+                    "NodeSubnet": {
+                        "Ref": "PrimaryNodeSubnet"
+                    },
+                    "KeyName": {
+                        "Ref": "KeyPairName"
+                    },
+                    "MongoDBVersion": {
+                        "Ref": "MongoDBVersion"
+                    },
+                    "MongoDBAdminUsername": {
+                        "Ref": "MongoDBAdminUsername"
+                    },
+                    "MongoDBAdminPassword": {
+                        "Ref": "MongoDBAdminPassword"
+                    },
+                    "NodeInstanceType": {
+                        "Ref": "ReplicaInstanceType"
+                    },
+                    "DataVolumeIops": {
+                        "Ref": "Iops"
+                    },
+                    "DataVolumeSize": {
+                        "Ref": "VolumeSize"
+                    },
+                    "DataVolumeType": {
+                        "Ref": "VolumeType"
+                    },
+                    "JournalVolumeIops": "250",
+                    "JournalVolumeSize": "25",
+                    "JournalVolumeType": "io1",
+                    "LogVolumeIops": "250",
+                    "LogVolumeSize": "25",
+                    "LogVolumeType": "io1",
+                    "MongoDataOpsAccessSecurityGroupID": {
+                        "Ref": "MongoDataOpsAccessSecurityGroup"
+                    },
+                    "MongoInterServerAccessSecurityGroupID": {
+                        "Ref": "MongoInterServerAccessSecurityGroup"
+                    },
+                    "MongoDBNodeIAMProfileID": {
+                        "Ref": "MongoDBNodeIAMProfile"
+                    },
+                    "QSS3BucketName": {
+                        "Ref": "QSS3BucketName"
+                    },
+                    "QSS3KeyPrefix": {
+                        "Ref": "QSS3KeyPrefix"
+                    },
+                    "StackName": {
+                        "Ref": "AWS::StackName"
+                    },
+                    "ImageId": {
+                        "Fn::FindInMap": [
+                            "AWSAMIRegionMap",
+                            {
+                                "Ref": "AWS::Region"
+                            },
+                            "AMZNLINUX"
+                        ]
+                    },
+                    "NodeNameTag": "PrimaryReplicaNode",
+                    "NodeIndex": "0",
+                    "ClusterNodeCount": "3",
+                    "ReplicaShardIndex": "0",
+                    "WaitForNodeInstallWaitHandle": {
+                        "Ref": "PrimaryReplicaNodeWaitForNodeInstallWaitHandle"
+                    }
+                }
+            }
+        },
+        "PrimaryReplicaNodeWaitForNodeInstall": {
+            "Type": "AWS::CloudFormation::WaitCondition",
+            "DependsOn": "PrimaryReplicaNode",
+            "Properties": {
+                "Handle": {
+                    "Ref": "PrimaryReplicaNodeWaitForNodeInstallWaitHandle"
+                },
+                "Timeout": "3600"
+            }
+        },
+        "SecondaryReplicaNodeWaitForNodeInstallWaitHandle": {
+            "Type": "AWS::CloudFormation::WaitConditionHandle",
+            "Properties": {}
+        },
+        "SecondaryReplicaNode": {
+            "DependsOn": "SecondaryReplicaNodeWaitForNodeInstallWaitHandle",
+            "Type": "AWS::CloudFormation::Stack",
+            "Properties": {
+                "TemplateURL": {
+                    "Fn::Sub": "https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}templates/oe-mongodb-node.template"
+                },
+                "Parameters": {
+                    "VPC": {
+                        "Ref": "VPC"
+                    },
+                    "NodeSubnet": {
+                        "Ref": "SecondaryNodeSubnet"
+                    },
+                    "KeyName": {
+                        "Ref": "KeyPairName"
+                    },
+                    "MongoDBVersion": {
+                        "Ref": "MongoDBVersion"
+                    },
+                    "MongoDBAdminUsername": {
+                        "Ref": "MongoDBAdminUsername"
+                    },
+                    "MongoDBAdminPassword": {
+                        "Ref": "MongoDBAdminPassword"
+                    },
+                    "NodeInstanceType": {
+                        "Ref": "ReplicaInstanceType"
+                    },
+                    "DataVolumeIops": {
+                        "Ref": "Iops"
+                    },
+                    "DataVolumeSize": {
+                        "Ref": "VolumeSize"
+                    },
+                    "DataVolumeType": {
+                        "Ref": "VolumeType"
+                    },
+                    "JournalVolumeIops": "250",
+                    "JournalVolumeSize": "25",
+                    "JournalVolumeType": "io1",
+                    "LogVolumeIops": "250",
+                    "LogVolumeSize": "25",
+                    "LogVolumeType": "io1",
+                    "MongoDataOpsAccessSecurityGroupID": {
+                        "Ref": "MongoDataOpsAccessSecurityGroup"
+                    },
+                    "MongoInterServerAccessSecurityGroupID": {
+                        "Ref": "MongoInterServerAccessSecurityGroup"
+                    },
+                    "MongoDBNodeIAMProfileID": {
+                        "Ref": "MongoDBNodeIAMProfile"
+                    },
+                    "QSS3BucketName": {
+                        "Ref": "QSS3BucketName"
+                    },
+                    "QSS3KeyPrefix": {
+                        "Ref": "QSS3KeyPrefix"
+                    },
+                    "StackName": {
+                        "Ref": "AWS::StackName"
+                    },
+                    "ImageId": {
+                        "Fn::FindInMap": [
+                            "AWSAMIRegionMap",
+                            {
+                                "Ref": "AWS::Region"
+                            },
+                            "AMZNLINUX"
+                        ]
+                    },
+                    "NodeNameTag": "SecondaryReplicaNode",
+                    "NodeIndex": "1",
+                    "ClusterNodeCount": "3",
+                    "ReplicaShardIndex": "0",
+                    "WaitForNodeInstallWaitHandle": {
+                        "Ref": "SecondaryReplicaNodeWaitForNodeInstallWaitHandle"
+                    }
+                }
+            }
+        },
+        "SecondaryReplicaNodeWaitForNodeInstall": {
+            "Type": "AWS::CloudFormation::WaitCondition"
+            "DependsOn": "SecondaryReplicaNode",
+            "Properties": {
+                "Handle": {
+                    "Ref": "SecondaryReplicaNodeWaitForNodeInstallWaitHandle"
+                },
+                "Timeout": "3600"
+            }
+        },
+        "ArbiterNodeWaitForNodeInstallWaitHandle": {
+            "Type": "AWS::CloudFormation::WaitConditionHandle",
+            "Properties": {}
+        },
+        "ArbiterNode": {
+            "DependsOn": "ArbiterNodeWaitForNodeInstallWaitHandle",
+            "Type": "AWS::CloudFormation::Stack",
+            "Properties": {
+                "TemplateURL": {
+                    "Fn::Sub": "https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}templates/oe-mongodb-node.template"
+                },
+                "Parameters": {
+                    "VPC": {
+                        "Ref": "VPC"
+                    },
+                    "NodeSubnet": {
+                        "Ref": "ArbiterNodeSubnet"
+                    },
+                    "KeyName": {
+                        "Ref": "KeyPairName"
+                    },
+                    "MongoDBVersion": {
+                        "Ref": "MongoDBVersion"
+                    },
+                    "MongoDBAdminUsername": {
+                        "Ref": "MongoDBAdminUsername"
+                    },
+                    "MongoDBAdminPassword": {
+                        "Ref": "MongoDBAdminPassword"
+                    },
+                    "NodeInstanceType": {
+                        "Ref": "ArbiterInstanceType"
+                    },
+                    "DataVolumeIops": "100",
+                    "DataVolumeSize": "10",
+                    "DataVolumeType": "gp2",
+                    "JournalVolumeIops": "100",
+                    "JournalVolumeSize": "10",
+                    "JournalVolumeType": "gp2",
+                    "LogVolumeIops": "100",
+                    "LogVolumeSize": "10",
+                    "LogVolumeType": "gp2",
+                    "MongoDataOpsAccessSecurityGroupID": {
+                        "Ref": "MongoDataOpsAccessSecurityGroup"
+                    },
+                    "MongoInterServerAccessSecurityGroupID": {
+                        "Ref": "MongoInterServerAccessSecurityGroup"
+                    },
+                    "MongoDBNodeIAMProfileID": {
+                        "Ref": "MongoDBNodeIAMProfile"
+                    },
+                    "QSS3BucketName": {
+                        "Ref": "QSS3BucketName"
+                    },
+                    "QSS3KeyPrefix": {
+                        "Ref": "QSS3KeyPrefix"
+                    },
+                    "StackName": {
+                        "Ref": "AWS::StackName"
+                    },
+                    "ImageId": {
+                        "Fn::FindInMap": [
+                            "AWSAMIRegionMap",
+                            {
+                                "Ref": "AWS::Region"
+                            },
+                            "AMZNLINUX"
+                        ]
+                    },
+                    "NodeNameTag": "ArbiterNode",
+                    "NodeIndex": "2",
+                    "ClusterNodeCount": "3",
+                    "ReplicaShardIndex": "0",
+                    "WaitForNodeInstallWaitHandle": {
+                        "Ref": "ArbiterNodeWaitForNodeInstallWaitHandle"
+                    }
+                }
+            }
+        },
+        "ArbiterReplicaNodeWaitForNodeInstall": {
+            "Type": "AWS::CloudFormation::WaitCondition"
+            "DependsOn": "ArbiterNode",
+            "Properties": {
+                "Handle": {
+                    "Ref": "ArbiterNodeWaitForNodeInstallWaitHandle"
+                },
+                "Timeout": "3600"
+            }
+        }
+    },
+    "Outputs": {
+        "PrimaryReplicaNodeIp": {
+            "Value": {
+                "Fn::GetAtt": [
+                    "PrimaryReplicaNode",
+                    "Outputs.NodePublicIp"
+                ]
+            },
+            "Description": "Public IP Address of Primary Replica Node"
+        },
+        "SecondaryReplicaNodeIp": {
+            "Value": {
+                "Fn::GetAtt": [
+                    "SecondaryReplicaNode",
+                    "Outputs.NodePublicIp"
+                ]
+            },
+            "Description": "Public IP Address of Secondary Replica Node"
+        },
+        "ArbiterNodeIp": {
+            "Value": {
+                "Fn::GetAtt": [
+                    "ArbiterNode",
+                    "Outputs.NodePublicIp"
+                ]
+            },
+            "Description": "Public IP Address of Arbiter Node"
+        }
+    }
+}
