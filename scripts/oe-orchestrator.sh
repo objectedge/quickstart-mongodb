@@ -51,12 +51,12 @@ MYSTACKID=$(${AWS_CMD} ec2 describe-tags --filters "Name=resource-id,Values=${AW
 MYSTACKID=$(echo ${MYSTACKID} | sed 's/^"\(.*\)"$/\1/' )
 MYSTACKPARENT=$(echo ${MYSTACKID} | awk -F '/' '{print $2}' | awk -F'-' '{print $1}')
 
-# MYPRIVATEIP=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document \
-#             | ${JQ_COMMAND} '.privateIp' \
-#             | sed 's/^"\(.*\)"$/\1/' )
+MYPRIVATEIP=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document \
+            | ${JQ_COMMAND} '.privateIp' \
+            | sed 's/^"\(.*\)"$/\1/' )
 
-# init_node.sh have already waited for the EIP
-MYPUBLICIP=`aws ec2 describe-addresses --filters "Name=instance-id,Values=${AWS_INSTANCEID}" | jq '.[]' | jq '.[]' | jq '.PublicIp' | sed s/\"//g`
+## init_node.sh have already waited for the EIP
+# MYPUBLICIP=`aws ec2 describe-addresses --filters "Name=instance-id,Values=${AWS_INSTANCEID}" | jq '.[]' | jq '.[]' | jq '.PublicIp' | sed s/\"//g`
 
 log() {
   echo $* 2>&1
@@ -91,13 +91,14 @@ CREATE=0
 PRINT=0
 BLOCK_UNTIL_TABLE_LIVE=0
 DELETE_TABLE=0
-GET_IPv4=0
+GET_IPv4_TYPE=0
+#GET_IPv4=0
 CREATE_KEY=0
 FETCH_KEY=0
 
 [[ $# -eq 0 ]] && usage;
 
-while getopts "hcbpdgikfs:i:n:q:w:" o; do
+while getopts "hcbpdgikfs:u:n:q:w:" o; do
   case "${o}" in
     h) usage && exit 0
     ;;
@@ -119,7 +120,7 @@ while getopts "hcbpdgikfs:i:n:q:w:" o; do
     ;;
     f) FETCH_KEY=1
     ;;
-    i) NEW_ITEM_PAIR=${OPTARG}
+    u) NEW_ITEM_PAIR=${OPTARG}
     ;;
     n) TABLE_NAME=${OPTARG}
     ;;
@@ -206,9 +207,9 @@ CreateTable() {
     ${AWS_CMD} dynamodb create-table \
         --table-name ${TABLE_NAME} \
         --attribute-definitions \
-            AttributeName=PublicIpAddress,AttributeType=S \
+            AttributeName=PrivateIpAddress,AttributeType=S \
         --key-schema \
-            AttributeName=PublicIpAddress,KeyType=HASH \
+            AttributeName=PrivateIpAddress,KeyType=HASH \
         --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
 
     log "Waiting for table creation"
@@ -252,12 +253,12 @@ WaitUntilTableDead() {
 
 # ------------------------------------------------------------------
 #          Initialize the dynamodb table
-#          PublicIpAddress, Status and InstanceId columns init
+#          PrivateIpAddress, Status and InstanceId columns init
 # ------------------------------------------------------------------
 
 InitMyTable() {
-    myip=${MYPUBLICIP}
-    json_template='{ "PublicIpAddress": {"S": "myip" }}'
+    myip=${MYPRIVATEIP}
+    json_template='{ "PrivateIpAddress": {"S": "myip" }}'
     json=$(echo ${json_template} | sed "s/myip/${myip}/g")
     ${AWS_CMD} dynamodb put-item --table-name ${TABLE_NAME}  --item "${json}"
     instanceid=$(curl http://169.254.169.254/latest/meta-data/instance-id)
@@ -270,7 +271,7 @@ InitMyTable() {
 # ------------------------------------------------------------------
 #          Update or insert table item with new key=value pair
 #          New attributes get added, old attributes get updated
-#          Use public ip as primary hash key
+#          Use private ip as primary hash key
 #          Usage InsertMyKeyValueS key=value
 # ------------------------------------------------------------------
 
@@ -284,10 +285,10 @@ InsertMyKeyValueS() {
     key=$(echo $keyvalue | awk -F'=' '{print $1}')
     value=$(echo $keyvalue | awk -F'=' '{print $2}')
 
-    keyjson_template='{"PublicIpAddress": {
+    keyjson_template='{"PrivateIpAddress": {
         "S": "myip"
         }}'
-    myip=${MYPUBLICIP}
+    myip=${MYPRIVATEIP}
     keyjson=$(echo -n ${keyjson_template} | sed "s/myip/${myip}/g")
 
     insertjson_template='{"key": {
@@ -301,7 +302,7 @@ InsertMyKeyValueS() {
     insertjson=$(echo -n ${insertjson_template} | sed "s/key/${key}/g")
     insertjson=$(echo -n ${insertjson} | sed "s/value/${value}/g")
     cmd=$(echo  "${AWS_CMD} dynamodb update-item --table-name ${TABLE_NAME} --key '${keyjson}' --attribute-updates '${insertjson}'")
-  log "${cmd}"
+    log "${cmd}"
     echo ${cmd} | sh
 }
 
@@ -313,7 +314,7 @@ FetchAuthKey() {
 }
 
 # ------------------------------------------------------------------
-#          Use public ip as primary hash key
+#          Use private ip as primary hash key
 #          Set Status of node
 #          Usage SetMyStatus "INSTALL_STARTED"
 #                SetMyStatus "INSTALL_COMPLETE" etc
@@ -325,10 +326,10 @@ SetMyStatus() {
         echo "Invalid Status Update!"
         return
     fi
-    keyjson_template='{"PublicIpAddress": {
+    keyjson_template='{"PrivateIpAddress": {
         "S": "myip"
         }}'
-    myip=${MYPUBLICIP}
+    myip=${MYPRIVATEIP}
     keyjson=$(echo -n ${keyjson_template} | sed "s/myip/${myip}/g")
 
     updatejson_template='{"Status": {
@@ -371,7 +372,7 @@ QueryStatusCount(){
                     }
                 ],
                 "ComparisonOperator":"EQ"
-                }} ' | ${JQ_COMMAND}  '.Items[]|.PublicIpAddress|.S' | wc -l)
+                }} ' | ${JQ_COMMAND}  '.Items[]|.PrivateIpAddress|.S' | wc -l)
 
     if [ "$status" == "WORKING" ]; then
         finished_count=$(${AWS_CMD} dynamodb scan --table-name ${TABLE_NAME} --scan-filter '
@@ -382,7 +383,7 @@ QueryStatusCount(){
                     }
                 ],
                 "ComparisonOperator":"EQ"
-                }} ' | ${JQ_COMMAND}  '.Items[]|.PublicIpAddress|.S' | wc -l)
+                }} ' | ${JQ_COMMAND}  '.Items[]|.PrivateIpAddress|.S' | wc -l)
     fi
 
     re='^[0-9]+$'
@@ -404,21 +405,21 @@ QueryStatusCount(){
 # ------------------------------------------------------------------
 
 GetIPv4Addrs(){
-    IPv4=$(${AWS_CMD} dynamodb scan --table-name ${TABLE_NAME} | ${JQ_COMMAND}  '.Items[]|.PublicIpAddress|.S')
+    IPv4=$(${AWS_CMD} dynamodb scan --table-name ${TABLE_NAME} | ${JQ_COMMAND}  '.Items[]|.PrivateIpAddress|.S')
     IPv4=$(echo ${IPv4} | sed s/\"//g)
     echo ${IPv4}
 }
 
 # ------------------------------------------------------------------
-#          Get MongoDB Node Public IP and Node Type
+#          Get MongoDB Node Private IP and Node Type
 #            (Primary, Secondary or Arbiter) from DDB
-#          Usage: GetPublicIpNodeType
-#                 Get type of the node with this public IP
+#          Usage: GetPrivateIpNodeType
+#                 Get type of the node with this private IP
 # ------------------------------------------------------------------
 
-GetPublicIpNodeType(){
-    public_ip_and_node_type=$(${AWS_CMD} dynamodb scan --table-name ${TABLE_NAME} | ${JQ_COMMAND} '.Items[]|{"PublicIp":.PublicIpAddress.S,"NodeType": .NodeType.S}' | sed s/\"//g)
-    echo ${public_ip_and_node_type}
+GetPrivateIpNodeType(){
+    private_ip_and_node_type=$(${AWS_CMD} dynamodb scan --table-name ${TABLE_NAME} | ${JQ_COMMAND} '.Items[]|{"PrivateIp":.PrivateIpAddress.S,"NodeType": .NodeType.S}')
+    echo ${private_ip_and_node_type}
 }
 
 # ------------------------------------------------------------------
@@ -470,8 +471,7 @@ if [ $CREATE -eq 1 ]; then
 fi
 
 if [ $GET_IPv4_TYPE -eq 1 ]; then
-    # GetIPv4Addrs
-    GetPublicIpNodeType
+    GetPrivateIpNodeType
 fi
 
 if [ $NEW_STATUS ]; then
@@ -495,11 +495,9 @@ if [ $QUERY_STATUS ]; then
     QueryStatusCount $QUERY_STATUS
 fi
 
-
 if [ $WAIT_STATUS_COUNT_PAIR ]; then
     WaitForSpecificStatus $WAIT_STATUS_COUNT_PAIR
 fi
-
 
 if [ $PRINT -eq 1 ]; then
     Print

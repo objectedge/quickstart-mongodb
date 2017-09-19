@@ -407,7 +407,7 @@
                                 {
                                     "Ref": "QSS3KeyPrefix"
                                 },
-                                "scripts/orchestrator.sh orchestrator.sh\n",
+                                "scripts/oe-orchestrator.sh orchestrator.sh\n",
                                 "chmod +x orchestrator.sh \n",
                                 "aws s3 cp s3://",
                                 {
@@ -527,7 +527,7 @@
             }
         },
         "NodeElasticIP": {
-            "Type": "AWS:EC2:EIP",
+            "Type": "AWS::EC2::EIP",
             "Properties": {
                 "InstanceId": {
                     "Ref": "NodeInstance"
@@ -589,5 +589,5 @@
             "Description": "Node Name Tag",
             "Value" : { "Ref": "NodeNameTag"}
         }
-    }init_node
+    }
 }

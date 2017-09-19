@@ -8,7 +8,7 @@ yum -y update
 yum install -y jq
 yum install -y xfsprogs
 
-source ./oe-orchestrator.sh -i
+source ./orchestrator.sh -i
 source ./config.sh
 
 tags=`aws ec2 describe-tags --filters "Name=resource-id,Values=${AWS_INSTANCEID}"`
@@ -30,8 +30,8 @@ getValue() {
 getEIP() {
     while true; do
         address=`aws ec2 describe-addresses --filters "Name=instance-id,Values=${AWS_INSTANCEID}"`
-        IP=`echo $address | jq '.[]' | jq '.[]' | jq '.PublicIp' | sed s/\"//g`
-        if [[ ! $IP =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        eip=`echo $address | jq '.[]' | jq '.[]' | jq '.PublicIp' | sed s/\"//g`
+        if [[ ! $eip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
             echo "Waiting for Elastic IP to be associated!.."
             sleep 5
         else
@@ -39,7 +39,7 @@ getEIP() {
             break
         fi
     done
-    echo ${IP}
+    echo ${eip}
 }
 
 ##version=`getValue MongoDBVersion`
@@ -72,8 +72,8 @@ yum -y install sysstat
 #  Figure out what kind of node we are and set some values
 #################################################################
 NODE_TYPE=`getValue Name`
-# IP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
-IP=$(getEIP)
+PRIVATEIP=$(curl http://169.254.169.254/latest/meta-data/local-ipv4)
+PUBLICIP=$(getEIP)
 SHARD=s`getValue ReplicaShardIndex`
 NODES=`getValue ClusterNodeCount`
 
@@ -85,21 +85,21 @@ UNIQUE_NAME=MONGODB_${TABLE_NAMETAG}_${VPC}
 #  Wait for all the nodes to synchronize so we have all IP addrs
 #################################################################
 if [ "${NODE_TYPE}" == "Primary" ]; then
-    ./oe-orchestrator.sh -c -n "${SHARD}_${UNIQUE_NAME}"
-    ./oe-orchestrator.sh -i "NodeType=${NODE_TYPE}"
-    ./oe-orchestrator.sh -s "WORKING" -n "${SHARD}_${UNIQUE_NAME}"
-    ./oe-orchestrator.sh -w "WORKING=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
-    node_info=$(./oe-orchestrator.sh -g -n "${SHARD}_${UNIQUE_NAME}")
-    IPADDRS=$(echo $node_info | jq '.PublicIp' | sed s/\"//g)
-    N_TYPES=$(echo $node_info | jq '.NodeType' | sed s/\"//g)
+    ./orchestrator.sh -c -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -u "NodeType=${NODE_TYPE}" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -s "WORKING" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -w "WORKING=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
+    node_info=$(./orchestrator.sh -g -n "${SHARD}_${UNIQUE_NAME}")
+    IPADDRS=$(echo "$node_info" | jq '.PrivateIp' | sed s/\"//g)
+    N_TYPES=$(echo "$node_info" | jq '.NodeType' | sed s/\"//g)
     read -a IPADDRS <<< $IPADDRS
     read -a N_TYPES <<< $N_TYPES
 else
-    ./oe-orchestrator.sh -b -n "${SHARD}_${UNIQUE_NAME}"
-    ./oe-orchestrator.sh -w "WORKING=1" -n "${SHARD}_${UNIQUE_NAME}"
-    ./oe-orchestrator.sh -i "NodeType=${NODE_TYPE}"
-    ./oe-orchestrator.sh -s "WORKING" -n "${SHARD}_${UNIQUE_NAME}"
-    ./oe-orchestrator.sh -w "WORKING=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -b -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -w "WORKING=1" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -u "NodeType=${NODE_TYPE}" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -s "WORKING" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -w "WORKING=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
 fi
 
 #################################################################
@@ -153,7 +153,7 @@ check_primary() {
 
 setup_security_common() {
     DDB_TABLE=$1
-    auth_key=$(./oe-orchestrator.sh -f -n $DDB_TABLE)
+    auth_key=$(./orchestrator.sh -f -n $DDB_TABLE)
     echo $auth_key > /mongo_auth/mongodb.key
     chmod 400 /mongo_auth/mongodb.key
     chown -R mongod:mongod /mongo_auth
@@ -178,13 +178,13 @@ db.createUser(
 EOF
 
     service mongod stop
-    ./oe-orchestrator.sh -k -n $DDB_TABLE
+    ./orchestrator.sh -k -n $DDB_TABLE
     sleep 5
     setup_security_common $DDB_TABLE
     sleep 5
     service mongod start
     sleep 10
-    ./oe-orchestrator.sh -s "SECURED" -n $DDB_TABLE
+    ./orchestrator.sh -s "SECURED" -n $DDB_TABLE
 }
 
 #################################################################
@@ -370,7 +370,7 @@ EOF
             ntype="${ntype#\"}"
 
             priority=5
-            if [ "${addr}" == "${IP}" ]; then
+            if [ "${addr}" == "${PRIVATEIP}" ]; then
                 priority=10
             fi
             arbiter_only=false
@@ -402,7 +402,7 @@ EOF
 
         priority=10
         conf="{\"_id\" : \"${SHARD}\", \"version\" : 1, \"members\" : ["
-        conf="${conf}{\"_id\" : 1, \"host\" :\"${IP}:${port}\", \"priority\":${priority}}"
+        conf="${conf}{\"_id\" : 1, \"host\" :\"${PRIVATEIP}:${port}\", \"priority\":${priority}}"
         conf=${conf}"]}"
 
 mongo --port ${port} << EOF
@@ -415,8 +415,8 @@ EOF
     #  Update status to FINISHED, if this is s0 then wait on the rest
     #  of the nodes to finish and remove orchestration tables
     #################################################################
-    ./oe-orchestrator.sh -s "FINISHED" -n "${SHARD}_${UNIQUE_NAME}"
-    ./oe-orchestrator.sh -w "FINISHED=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -s "FINISHED" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -w "FINISHED=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
 
     echo "Setting up security, bootstrap table: " "${SHARD}_${UNIQUE_NAME}"
     # wait for mongo to become primary
@@ -425,21 +425,21 @@ EOF
 
     setup_security_primary "${SHARD}_${UNIQUE_NAME}"
 
-    ./oe-orchestrator.sh -w "SECURED=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
-    ./oe-orchestrator.sh -d -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -w "SECURED=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -d -n "${SHARD}_${UNIQUE_NAME}"
     rm /tmp/mongo_pass.txt
 else
     #################################################################
     #  Update status of Secondary to FINISHED
     #################################################################
-    ./oe-orchestrator.sh -s "FINISHED" -n "${SHARD}_${UNIQUE_NAME}"
-    ./oe-orchestrator.sh -w "FINISHED=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -s "FINISHED" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -w "FINISHED=${NODES}" -n "${SHARD}_${UNIQUE_NAME}"
 
-    ./oe-orchestrator.sh -w "SECURED=1" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -w "SECURED=1" -n "${SHARD}_${UNIQUE_NAME}"
     service mongod stop
     setup_security_common "${SHARD}_${UNIQUE_NAME}"
     service mongod start
-    ./oe-orchestrator.sh -s "SECURED" -n "${SHARD}_${UNIQUE_NAME}"
+    ./orchestrator.sh -s "SECURED" -n "${SHARD}_${UNIQUE_NAME}"
     rm /tmp/mongo_pass.txt
 
 fi

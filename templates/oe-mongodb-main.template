@@ -59,7 +59,7 @@
                     "default": "Secondary Node Subnet"
                 },
                 "ArbiterNodeSubnet": {
-                    "default": "Secondary Node Subnet"
+                    "default": "Arbiter Node Subnet"
                 },
                 "KeyPairName": {
                     "default": "Key Pair Name"
